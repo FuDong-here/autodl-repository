@@ -1,0 +1,7 @@
+fold,status,signal_date,eval_start,eval_end,train_data_end,selected_stocks,selected_scores,portfolio_return,random_return,optimal_return,visible_proxy,selected_mean_return,missing_selected,error
+1,failed,2026-04-17,2026-04-20,2026-04-24,2026-04-17,,,,,,,,,"Invalid value '[-1.7266087  -1.7266087  -1.7266087  ...  1.72469112  1.72469112
+  1.72469112]' for dtype 'int64'"
+2,failed,2026-05-08,2026-05-11,2026-05-15,2026-05-08,,,,,,,,,"Invalid value '[-1.72660176 -1.72660176 -1.72660176 ...  1.72472541  1.72472541
+  1.72472541]' for dtype 'int64'"
+3,failed,2026-05-15,2026-05-18,2026-05-22,2026-05-15,,,,,,,,,"Invalid value '[-1.72659896 -1.72659896 -1.72659896 ...  1.72473927  1.72473927
+  1.72473927]' for dtype 'int64'"

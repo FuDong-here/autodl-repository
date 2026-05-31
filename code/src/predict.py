@@ -53,7 +53,10 @@ feature_engineer_func_map = {
 def preprocess_predict_data(df, stockid2idx):
 	assert config['feature_num'] in feature_engineer_func_map, f"Unsupported feature_num: {config['feature_num']}"
 	feature_engineer = feature_engineer_func_map[config['feature_num']]
-	feature_columns = feature_cloums_map[config['feature_num']]
+	feature_columns = [
+		col for col in feature_cloums_map[config['feature_num']]
+		if col != 'instrument'
+	]
 
 	df = df.copy()
 	df = df.sort_values(['股票代码', '日期']).reset_index(drop=True)

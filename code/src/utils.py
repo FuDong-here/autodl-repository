@@ -4,6 +4,43 @@ import joblib
 import os
 from tqdm import tqdm
 
+
+# Ranking labels use clipped cross-sectional returns for stability, while the
+# raw targets are still kept for metrics/backtest scoring.
+def make_relevance_scores(
+    day_targets,
+    label_clip_lower_quantile=0.01,
+    label_clip_upper_quantile=0.99,
+    use_percentile_relevance=True,
+):
+    targets = np.asarray(day_targets, dtype=np.float32)
+    if len(targets) == 0:
+        return targets
+
+    labels = targets.copy()
+    if (
+        len(labels) > 1
+        and label_clip_lower_quantile is not None
+        and label_clip_upper_quantile is not None
+        and 0 <= label_clip_lower_quantile < label_clip_upper_quantile <= 1
+    ):
+        lower = np.quantile(labels, label_clip_lower_quantile)
+        upper = np.quantile(labels, label_clip_upper_quantile)
+        if np.isfinite(lower) and np.isfinite(upper):
+            labels = np.clip(labels, lower, upper)
+
+    if use_percentile_relevance:
+        if len(labels) == 1:
+            return np.ones_like(labels, dtype=np.float32)
+        ranks = pd.Series(labels).rank(method='average', ascending=True).to_numpy(dtype=np.float32)
+        return ((ranks - 1.0) / (len(labels) - 1.0)).astype(np.float32)
+
+    sorted_indices = np.argsort(labels)[::-1]
+    relevance = np.zeros_like(labels, dtype=np.float32)
+    for rank, idx in enumerate(sorted_indices):
+        relevance[idx] = len(labels) - rank
+    return relevance
+
 # 特征工程
 def _rolling_linear_regression(x, y):
     x = np.vstack([np.ones(len(x)), x]).T
@@ -404,11 +441,7 @@ def process_single_date(date, data, features, sequence_length):
         if len(day_sequences) >= 10:  # 确保有足够的股票
             # 创建排序标签：涨跌幅越高，相关性得分越高
             day_targets = np.array(day_targets)
-            # 使用涨跌幅的排序作为相关性得分（值越大排名越高）
-            sorted_indices = np.argsort(day_targets)[::-1]  # 降序排列
-            relevance = np.zeros_like(day_targets, dtype=np.float32)
-            for rank, idx in enumerate(sorted_indices):
-                relevance[idx] = len(day_targets) - rank  # 最高涨跌幅得分最高
+            relevance = make_relevance_scores(day_targets)
             
             return {
                 'sequences': np.array(day_sequences),
@@ -525,7 +558,16 @@ def create_dataset(data, features, sequence_length, ranking_data_path=None):
     """保持原有接口，但内部调用新的排序数据集创建函数"""
     return create_ranking_dataset_multiprocess(data, features, sequence_length, ranking_data_path)
 
-def create_ranking_dataset_vectorized(data, features, sequence_length, ranking_data_path=None, min_window_end_date=None):
+def create_ranking_dataset_vectorized(
+    data,
+    features,
+    sequence_length,
+    ranking_data_path=None,
+    min_window_end_date=None,
+    label_clip_lower_quantile=0.01,
+    label_clip_upper_quantile=0.99,
+    use_percentile_relevance=True,
+):
     """
     向量化加速版本：预计算每只股票的所有滑动窗口，再按日期聚合。
     保持与原函数完全相同的输出格式。
@@ -615,11 +657,12 @@ def create_ranking_dataset_vectorized(data, features, sequence_length, ranking_d
         day_targets = group['target'].values              # (N,)
         day_stocks = group['stock_code'].tolist()         # [str]
 
-        # 计算 relevance（与原逻辑一致）
-        sorted_indices = np.argsort(day_targets)[::-1]
-        relevance = np.zeros_like(day_targets, dtype=np.float32)
-        for rank, idx in enumerate(sorted_indices):
-            relevance[idx] = len(day_targets) - rank
+        relevance = make_relevance_scores(
+            day_targets,
+            label_clip_lower_quantile=label_clip_lower_quantile,
+            label_clip_upper_quantile=label_clip_upper_quantile,
+            use_percentile_relevance=use_percentile_relevance,
+        )
 
         sequences.append(day_seqs)
         targets.append(day_targets)

@@ -57,7 +57,10 @@ def _preprocess_common(df, stockid2idx, desc, drop_small_open=True):
     assert config['feature_num'] in feature_engineer_func_map, f"Unsupported feature_num: {config['feature_num']}"
     assert stockid2idx is not None, "stockid2idx 不能为空"
     feature_engineer = feature_engineer_func_map[config['feature_num']]
-    feature_columns = feature_cloums_map[config['feature_num']]
+    feature_columns = [
+        col for col in feature_cloums_map[config['feature_num']]
+        if col != 'instrument'
+    ]
 
     # 保证时序正确，避免 shift 标签错位
     df = df.copy()
@@ -135,7 +138,7 @@ class WeightedRankingLoss(nn.Module):
         weight_matrix = weights.unsqueeze(2) + weights.unsqueeze(1)
         # weight_matrix = torch.where(weight_matrix > 2.0, self.weight_factor, 1.0)
         
-        pairwise_loss = torch.sigmoid(-pred_diff * torch.sign(true_diff))
+        pairwise_loss = F.softplus(-pred_diff * torch.sign(true_diff))
         
         # 应用mask和权重
         weighted_loss = pairwise_loss * mask * weight_matrix
@@ -392,6 +395,7 @@ def evaluate_ranking_model(model, dataloader, criterion, device, writer, epoch):
         for batch in tqdm(dataloader, desc=f"Evaluating Epoch {epoch+1}"):
             sequences = batch['sequences'].to(device)
             targets = batch['targets'].to(device)
+            relevance = batch['relevance'].to(device)
             masks = batch['masks'].to(device)
             
             # 模型预测
@@ -400,6 +404,7 @@ def evaluate_ranking_model(model, dataloader, criterion, device, writer, epoch):
             # 应用mask
             masked_outputs = outputs * masks + (1 - masks) * (-1e9)
             masked_targets = targets * masks
+            masked_relevance = relevance.float() * masks
             
             # 计算损失
             batch_loss = None
@@ -416,15 +421,10 @@ def evaluate_ranking_model(model, dataloader, criterion, device, writer, epoch):
                     valid_indices = valid_indices.unsqueeze(0)
                 
                 valid_pred = masked_outputs[i][valid_indices]
-                valid_true = masked_targets[i][valid_indices]
+                valid_relevance = masked_relevance[i][valid_indices]
                 
                 if len(valid_pred) > 1:
-                    _, sorted_indices = torch.sort(valid_true, descending=True)
-                    relevance_scores = torch.zeros_like(valid_true, requires_grad=False)
-                    relevance_scores[sorted_indices] = torch.arange(len(valid_true), 0, -1, device=device, dtype=torch.float32)
-                    relevance_scores = relevance_scores.detach()
-                    
-                    loss = criterion(valid_pred.unsqueeze(0), relevance_scores.unsqueeze(0))
+                    loss = criterion(valid_pred.unsqueeze(0), valid_relevance.unsqueeze(0))
                     batch_loss = batch_loss + loss if batch_loss is not None else loss
             
             if batch_loss is not None:
@@ -597,14 +597,20 @@ def main():
         train_data,
         features,
         config['sequence_length'],
-        ranking_data_path=config.get('train_ranking_data_path')
+        ranking_data_path=config.get('train_ranking_data_path'),
+        label_clip_lower_quantile=config.get('label_clip_lower_quantile', 0.01),
+        label_clip_upper_quantile=config.get('label_clip_upper_quantile', 0.99),
+        use_percentile_relevance=config.get('use_percentile_relevance', True),
     )
     val_sequences, val_targets, val_relevance, val_stock_indices = create_ranking_dataset_vectorized(
         val_data,
         features,
         config['sequence_length'],
         ranking_data_path=config.get('val_ranking_data_path'),
-        min_window_end_date=val_start.strftime('%Y-%m-%d')
+        min_window_end_date=val_start.strftime('%Y-%m-%d'),
+        label_clip_lower_quantile=config.get('label_clip_lower_quantile', 0.01),
+        label_clip_upper_quantile=config.get('label_clip_upper_quantile', 0.99),
+        use_percentile_relevance=config.get('use_percentile_relevance', True),
     )
 
     print(f"训练集样本数: {len(train_sequences)}")

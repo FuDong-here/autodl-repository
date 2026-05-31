@@ -18,6 +18,9 @@ config = {
     'base_weight': 1.0, # 非top-k样本权重
     'top5_weight': 2.0, # top-5样本权重（应大于base_weight）
 
+    'label_clip_lower_quantile': 0.01,
+    'label_clip_upper_quantile': 0.99,
+    'use_percentile_relevance': True,
     'output_dir': f'./model/{sequence_length}_{feature_num}',
     'data_path': './data',
 }

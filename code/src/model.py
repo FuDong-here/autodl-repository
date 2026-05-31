@@ -29,10 +29,20 @@ class CrossStockAttention(nn.Module):
         self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, stock_features):
+    def forward(self, stock_features, masks=None):
         # stock_features: [batch, num_stocks, d_model]
+        # masks: [batch, num_stocks], 1 for valid stocks and 0 for padding.
+        key_padding_mask = None
+        if masks is not None:
+            key_padding_mask = ~masks.bool()
+
         # 股票间交互：每只股票都关注其他股票的特征
-        attended, _ = self.cross_attention(stock_features, stock_features, stock_features)
+        attended, _ = self.cross_attention(
+            stock_features,
+            stock_features,
+            stock_features,
+            key_padding_mask=key_padding_mask,
+        )
         output = self.norm(stock_features + self.dropout(attended))
         return output
 
@@ -112,7 +122,7 @@ class StockTransformer(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
     
-    def forward(self, src):
+    def forward(self, src, masks=None):
         # src: [batch, num_stocks, seq_len, feature_dim]
         batch_size, num_stocks, seq_len, feature_dim = src.size()
         
@@ -133,7 +143,7 @@ class StockTransformer(nn.Module):
         stock_features = aggregated_features.view(batch_size, num_stocks, -1)  # [batch, num_stocks, d_model]
         
         # 股票间交互注意力
-        interactive_features = self.cross_stock_attention(stock_features)  # [batch, num_stocks, d_model]
+        interactive_features = self.cross_stock_attention(stock_features, masks)  # [batch, num_stocks, d_model]
         
         # 重塑回原形状
         interactive_features = interactive_features.view(batch_size * num_stocks, -1)
@@ -148,4 +158,3 @@ class StockTransformer(nn.Module):
         output = scores.view(batch_size, num_stocks)  # [batch, num_stocks]
         
         return output
-

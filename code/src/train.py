@@ -323,7 +323,7 @@ def train_ranking_model(model, dataloader, criterion, optimizer, device, epoch, 
         optimizer.zero_grad()
         
         # 模型预测
-        outputs = model(sequences)  # [batch, max_stocks] 预测分数
+        outputs = model(sequences, masks)  # [batch, max_stocks] 预测分数
         
         # 应用mask，只考虑有效股票
         masked_outputs = outputs * masks + (1 - masks) * (-1e9)  # 无效位置设为很小的值
@@ -399,7 +399,7 @@ def evaluate_ranking_model(model, dataloader, criterion, device, writer, epoch):
             masks = batch['masks'].to(device)
             
             # 模型预测
-            outputs = model(sequences)
+            outputs = model(sequences, masks)
             
             # 应用mask
             masked_outputs = outputs * masks + (1 - masks) * (-1e9)

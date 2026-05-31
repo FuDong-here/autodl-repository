@@ -13,6 +13,9 @@
     "pairwise_weight": 1,
     "base_weight": 1.0,
     "top5_weight": 2.0,
+    "label_clip_lower_quantile": 0.01,
+    "label_clip_upper_quantile": 0.99,
+    "use_percentile_relevance": true,
     "output_dir": "./model/60_158+39",
     "data_path": "./data"
 }
